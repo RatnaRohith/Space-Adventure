@@ -1,0 +1,150 @@
+Lets add player UI to the player
+
+Let's add a Player UI (HUD) system to your Godot 3D TPS controller. We'll keep it separate from player.gd, just like your movement state machine, camera controller, and animation controller.
+
+The UI will display player health, stamina, and movement state, and we can later connect it to your weapon, inventory, and interaction systems.
+
+1. Create the Player UI scene
+
+Create a new scene named PlayerHUD.tscn with this node structure.
+
+PlayerHUD — CanvasLayer
+
+HUDContainer — Control
+
+HealthContainer — VBoxContainer
+
+HealthLabel — Label
+
+HealthBar — ProgressBar
+
+StaminaContainer — VBoxContainer
+
+StaminaLabel — Label
+
+StaminaBar — ProgressBar
+
+MovementLabel — Label
+
+Set the HUDContainer layout to Full Rect. Anchor the health and stamina containers to the top-left, and the movement label to the bottom-left.
+
+2. Create the HUD script
+
+Attach PlayerHUD.gd to the PlayerHUD node.
+
+
+extends CanvasLayer
+
+@onready var health_label: Label = $HUDContainer/HealthContainer/HealthLabel
+@onready var health_bar: ProgressBar = $HUDContainer/HealthContainer/HealthBar
+
+@onready var stamina_label: Label = $HUDContainer/StaminaContainer/StaminaLabel
+@onready var stamina_bar: ProgressBar = $HUDContainer/StaminaContainer/StaminaBar
+
+@onready var movement_label: Label = $HUDContainer/MovementLabel
+
+
+func update_health(current_health: float, max_health: float) -> void:
+	health_bar.max_value = max_health
+	health_bar.value = current_health
+
+	health_label.text = "Health: %d / %d" % [
+		int(current_health),
+		int(max_health)
+	]
+
+
+func update_stamina(current_stamina: float, max_stamina: float) -> void:
+	stamina_bar.max_value = max_stamina
+	stamina_bar.value = current_stamina
+
+	stamina_label.text = "Stamina: %d / %d" % [
+		int(current_stamina),
+		int(max_stamina)
+	]
+
+
+func update_movement_state(state_name: String) -> void:
+	movement_label.text = "Movement: " + state_name
+
+This script only manages presentation. It does not calculate health, stamina, or movement; those values belong to their respective gameplay systems.
+
+3. Add the HUD to the Player scene
+
+Your existing TPS player scene can now have this structure:
+
+Player — CharacterBody3D
+
+Player.gd
+
+MovementStateMachine
+
+CameraPivot / Camera3D
+
+AnimationController
+
+HealthComponent
+
+StaminaComponent
+
+PlayerHUD — instance of PlayerHUD.tscn
+
+You can instance PlayerHUD.tscn as a child of Player. Because it uses CanvasLayer, it renders as a screen-space overlay rather than moving with the 3D character.
+
+4. Connect the HUD to Player.gd
+
+For an initial prototype, add the following code to your existing player script. This example assumes health and stamina are stored in the player script for now.
+
+
+@export var max_health: float = 100.0
+var health: float = 100.0
+
+@export var max_stamina: float = 100.0
+var stamina: float = 100.0
+
+@onready var player_hud = $PlayerHUD
+
+
+func _ready() -> void:
+	update_player_hud()
+
+
+func update_player_hud() -> void:
+	player_hud.update_health(health, max_health)
+	player_hud.update_stamina(stamina, max_stamina)
+
+
+func take_damage(amount: float) -> void:
+	health = clampf(health - amount, 0.0, max_health)
+	update_player_hud()
+
+
+func restore_health(amount: float) -> void:
+	health = clampf(health + amount, 0.0, max_health)
+	update_player_hud()
+
+Call take_damage(20.0) when an enemy hits the player, for example. The health bar will update immediately.
+
+5. Update the movement state label
+
+From your movement state machine, call this whenever the active state changes:
+
+player_hud.update_movement_state("Sprinting")
+
+Possible states include Idle, Walking, Running, Sprinting, Crouching, Jumping, Falling, and Jetpacking. Prefer updating the label on a state transition instead of every physics frame.
+
+6. What the HUD will look like
+
+♥ HEALTH 100 / 100
+
+⚡ STAMINA 100 / 100
+
+MOVEMENT: IDLE
+
+TPS PLAYER HUD · PROTOTYPE
+
+This is a visual mockup of the HUD, not a running Godot scene.
+
+Next step
+
+I recommend implementing HealthComponent and StaminaComponent as separate reusable nodes, then connecting their signals to PlayerHUD.gd. That way, your player controller, HUD, weapons, enemies, and future multiplayer systems won't need to manage the same gameplay values independently.

@@ -1,0 +1,273 @@
+Health System with health Component 
+
+Let's build a reusable Health System with a separate Health Component for your Godot 4 TPS player. We'll keep health logic independent from player.gd, the movement state machine, animation controller, and Player HUD.
+
+The same component can later be reused for enemies, NPCs, companion robots, and spaceships in your CodeAlongGodot project.
+
+1. Design the Health System
+
+Damage Sources
+
+Enemy attacks · Weapons · Falling · Hazards
+
+HealthComponent
+
+Health · Max Health · Damage · Healing · Death
+
+Player
+
+Gameplay response
+
+Player HUD
+
+Health bar and text
+
+2. Create the HealthComponent node
+
+Add a child node to your Player scene:
+
+Player (CharacterBody3D)
+├── CameraPivot
+│   └── Camera3D
+├── MovementStateMachine
+├── AnimationController
+├── HealthComponent (Node)
+└── PlayerHUD (CanvasLayer)
+
+Attach a script named HealthComponent.gd to the HealthComponent node.
+
+3. Implement HealthComponent.gd
+
+This component handles health, damage, healing, and death using signals so other systems can respond without being tightly coupled to it.
+
+
+extends Node
+
+signal health_changed(current_health: float, max_health: float)
+signal damaged(amount: float, current_health: float)
+signal healed(amount: float, current_health: float)
+signal died
+
+@export var max_health: float = 100.0
+
+var current_health: float = 100.0
+var is_dead: bool = false
+
+
+func _ready() -> void:
+	max_health = maxf(max_health, 1.0)
+	current_health = max_health
+
+	health_changed.emit(current_health, max_health)
+
+
+func take_damage(amount: float) -> void:
+	if is_dead:
+		return
+
+	if amount <= 0.0:
+		return
+
+	var previous_health := current_health
+
+	current_health = clampf(
+		current_health - amount,
+		0.0,
+		max_health
+	)
+
+	var actual_damage := previous_health - current_health
+
+	if actual_damage <= 0.0:
+		return
+
+	damaged.emit(actual_damage, current_health)
+	health_changed.emit(current_health, max_health)
+
+	if current_health <= 0.0:
+		is_dead = true
+		died.emit()
+
+
+func heal(amount: float) -> void:
+	if is_dead:
+		return
+
+	if amount <= 0.0:
+		return
+
+	var previous_health := current_health
+
+	current_health = clampf(
+		current_health + amount,
+		0.0,
+		max_health
+	)
+
+	var actual_healing := current_health - previous_health
+
+	if actual_healing <= 0.0:
+		return
+
+	healed.emit(actual_healing, current_health)
+	health_changed.emit(current_health, max_health)
+
+
+func restore_full_health() -> void:
+	if is_dead:
+		return
+
+	current_health = max_health
+	health_changed.emit(current_health, max_health)
+
+
+func get_health_percentage() -> float:
+	return current_health / max_health
+What each function does
+
+Function
+
+	
+
+Purpose
+
+
+
+
+take_damage(amount)
+
+	
+
+Reduces health and emits damage signals.
+
+
+
+
+heal(amount)
+
+	
+
+Restores health without exceeding maximum health.
+
+
+
+
+restore_full_health()
+
+	
+
+Refills health to maximum.
+
+
+
+
+get_health_percentage()
+
+	
+
+Returns health as a value from 0.0 to 1.0.
+
+The signals communicate changes to the player, HUD, sound effects, and animation systems. The component doesn't need to know which systems are listening.
+
+4. Connect HealthComponent to Player.gd
+
+Your player controller should respond to death, but it shouldn't calculate or store health itself.
+
+Add the following to your existing player.gd script. Keep your existing movement and camera code.
+
+
+@onready var health_component = $HealthComponent
+
+
+func _ready() -> void:
+	health_component.died.connect(_on_player_died)
+
+
+func _on_player_died() -> void:
+	print("Player has died!")
+
+	# Disable further player movement.
+	set_physics_process(false)
+
+Important: If your existing player.gd already has _ready(), add the connection inside that function rather than creating a second _ready().
+
+5. Connect the HealthComponent to PlayerHUD
+
+In PlayerHUD.gd, add a function to receive health updates:
+
+
+func update_health(current_health: float, max_health: float) -> void:
+	health_bar.max_value = max_health
+	health_bar.value = current_health
+
+	health_label.text = "Health: %d / %d" % [
+		int(current_health),
+		int(max_health)
+	]
+
+Then connect the signal from your player script:
+
+
+func _ready() -> void:
+	health_component.health_changed.connect(
+		_on_health_changed
+	)
+
+	health_component.died.connect(_on_player_died)
+
+	# Initialize the HUD with the current values.
+	_on_health_changed(
+		health_component.current_health,
+		health_component.max_health
+	)
+
+
+func _on_health_changed(
+	current_health: float,
+	max_health: float
+) -> void:
+	$PlayerHUD.update_health(current_health, max_health)
+
+If you already connected the died signal in _ready(), keep only one connection. This version also initializes the HUD when the player scene starts.
+
+6. Test the Health System
+
+Temporarily add this function to player.gd and call it from _input() to test damage and healing.
+
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("test_damage"):
+		health_component.take_damage(20.0)
+
+	if event.is_action_pressed("test_heal"):
+		health_component.heal(20.0)
+
+Create the input actions test_damage and test_heal in Project → Project Settings → Input Map, and assign keys such as H and J.
+
+Expected behavior:
+
+Starting health: 100
+
+Press H: health becomes 80
+
+Press J: health returns to 100
+
+Reduce health to zero: the death signal fires, and player physics processing is disabled.
+
+Remove the test input code when you integrate your combat system.
+
+7. Final reusable architecture
+
+Player
+
+HealthComponent.gd
+
+PlayerHUD.gd
+
+MovementStateMachine
+
+AnimationController
+
+Reusable later by Enemy, NPC, Companion Robot, and Spaceship scenes. Each entity gets its own health component instance.
+
+Recommended next step: add a separate DamageComponent or damage interface for weapons, melee attacks, and environmental hazards. Keep damage calculation separate from health storage, then let HealthComponent handle the resulting health changes.

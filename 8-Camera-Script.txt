@@ -1,0 +1,244 @@
+Lets seperate the camera controller into a seperate script for camera pivot
+
+Let's separate the camera logic into its own CameraController.gd script attached to CameraPivot. This keeps your player movement state machine independent from camera rotation and mouse input.
+
+1. Updated scene hierarchy
+
+Player (CharacterBody3D)
+
+Player.gd
+
+CollisionShape3D
+
+CameraPivot (Node3D)
+
+CameraController.gd
+
+SpringArm3D
+
+Camera3D
+
+MovementStateMachine
+
+The camera controller will manage mouse look, vertical rotation limits, mouse capture, and smooth camera height changes when crouching.
+
+2. Create CameraController.gd
+
+Attach this script directly to the CameraPivot node.
+
+
+extends Node3D
+class_name CameraController
+
+# Mouse settings
+@export var mouse_sensitivity: float = 0.003
+@export var min_pitch: float = -60.0
+@export var max_pitch: float = 60.0
+
+# Camera height settings
+@export var standing_height: float = 1.5
+@export var crouching_height: float = 1.0
+@export var height_smoothing: float = 8.0
+
+var is_crouching: bool = false
+
+
+func _ready() -> void:
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _unhandled_input(event: InputEvent) -> void:
+
+    # Mouse look
+    if event is InputEventMouseMotion:
+        if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+
+            rotation.y -= (
+                event.relative.x * mouse_sensitivity
+            )
+
+            rotation.x -= (
+                event.relative.y * mouse_sensitivity
+            )
+
+            rotation.x = clampf(
+                rotation.x,
+                deg_to_rad(min_pitch),
+                deg_to_rad(max_pitch)
+            )
+
+    # Release mouse
+    if event.is_action_pressed("ui_cancel"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+    # Capture mouse again
+    if event is InputEventMouseButton and event.pressed:
+        if event.button_index == MOUSE_BUTTON_LEFT:
+            Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _process(delta: float) -> void:
+
+    # Select camera height
+    var target_height = standing_height
+
+    if is_crouching:
+        target_height = crouching_height
+
+    # Smoothly adjust pivot height
+    position.y = lerpf(
+        position.y,
+        target_height,
+        clampf(height_smoothing * delta, 0.0, 1.0)
+    )
+
+
+func set_crouching(value: bool) -> void:
+    is_crouching = value
+What changed?
+
+rotation.y rotates the camera horizontally.
+
+rotation.x rotates the camera vertically.
+
+clampf() prevents excessive upward or downward rotation.
+
+_process() smoothly adjusts the pivot height.
+
+set_crouching() lets the player tell the camera when crouching starts or ends.
+
+3. Update Player.gd
+
+Remove these items from your existing player script:
+
+MOUSE_SENSITIVITY
+
+STANDING_CAMERA_HEIGHT
+
+CROUCH_CAMERA_HEIGHT
+
+CAMERA_SMOOTHING
+
+The old _unhandled_input() function
+
+The old update_camera_height() function
+
+The camera_pivot reference, if you no longer need it for anything else
+
+Keep your movement state machine and movement physics unchanged.
+
+Add the camera reference:
+
+
+@onready var camera_controller: CameraController = \
+    $CameraPivot
+
+Then update your crouch handler to notify the camera controller:
+
+
+func handle_crouch_input() -> void:
+
+    if Input.is_action_just_pressed("crouch"):
+
+        is_crouching = not is_crouching
+
+        camera_controller.set_crouching(is_crouching)
+
+Your _physics_process() should now call:
+
+
+func _physics_process(delta: float) -> void:
+
+    apply_gravity(delta)
+
+    handle_crouch_input()
+
+    handle_jump()
+
+    var input_dir = get_movement_input()
+
+    movement_state_machine.update_state(
+        is_crouching,
+        input_dir
+    )
+
+    handle_movement(delta, input_dir)
+
+    move_and_slide()
+
+Notice that update_camera_height(delta) is no longer called by the player because the camera controller handles that independently.
+
+4. Final script responsibilities
+
+Script
+
+	
+
+Responsibility
+
+
+
+
+Player.gd
+
+	
+
+Movement, gravity, jumping and crouch input
+
+
+
+
+CameraController.gd
+
+	
+
+Mouse look, pitch limits, mouse capture and camera height
+
+
+
+
+MovementStateMachine.gd
+
+	
+
+Selecting and changing movement states
+
+
+
+
+IdleState.gd
+
+	
+
+Idle movement speed
+
+
+
+
+WalkingState.gd
+
+	
+
+Walking speed
+
+
+
+
+SprintingState.gd
+
+	
+
+Sprinting speed
+
+
+
+
+CrouchingState.gd
+
+	
+
+Crouching speed
+
+Important: Keep CameraPivot positioned at the player's intended camera height when the scene starts. For example, set its initial Y position to 1.5 if that is your standing height. Also, do not leave the old camera input handler in Player.gd, or mouse input may rotate the camera twice.
+
+This separation lets you reuse CameraController.gd on other characters later, while keeping movement states and camera behavior independent.

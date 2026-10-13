@@ -1,0 +1,346 @@
+Lets start with weapon system v1, equip and unequip a weapon, weapon interactable, Weapon component
+Godot TPS — Weapon System V1
+
+We'll build the first version of the weapon system for your CodeAlongGodot TPS player. We'll keep each responsibility in a separate script so we can extend the system later with weapon types, damage, ammunition, attachments, reloading, and combat.
+
+1. V1 features
+
+Weapon Component
+
+Stores weapon data and manages the weapon's equipped state.
+
+Weapon Interactable
+
+Lets the player look at a weapon pickup and press the interaction key to collect it.
+
+Weapon Manager
+
+Equips, unequips, and stores the current weapon reference.
+
+Player Input
+
+E picks up a weapon; 1 equips or unequips the collected weapon.
+
+2. Scene structure
+
+Create the following files and nodes in your Godot project.
+
+
+Player (CharacterBody3D)
+├── CameraPivot
+│   └── Camera3D
+│       └── InteractionRayCast3D
+├── WeaponManager (Node3D)
+│   └── WeaponSocket (Marker3D)
+└── PlayerUI (Control)
+    └── InteractionLabel (Label)
+
+WeaponPickup (Area3D)
+├── CollisionShape3D
+└── WeaponModel (MeshInstance3D)
+
+The WeaponSocket is the attachment point where the equipped weapon will appear. Position it in front of the camera or at the player's hand location, depending on whether you're using a first-person or third-person weapon model.
+
+3. Weapon Component — weapon_component.gd
+
+Attach this script to the root Node3D of a weapon scene. It stores the weapon's properties and controls whether the weapon is equipped.
+
+
+extends Node3D
+class_name WeaponComponent
+
+@export var weapon_name: String = "Pistol"
+@export var weapon_type: String = "Ranged"
+
+@export var damage: float = 10.0
+@export var range_distance: float = 50.0
+@export var magazine_size: int = 12
+@export var reload_speed: float = 1.5
+
+var is_equipped: bool = false
+
+
+func _ready() -> void:
+    unequip()
+
+
+func equip() -> void:
+    is_equipped = true
+    visible = true
+
+    print(weapon_name, " equipped")
+
+
+func unequip() -> void:
+    is_equipped = false
+    visible = false
+
+    print(weapon_name, " unequipped")
+
+What this component does
+
+class_name WeaponComponent makes the script reusable and accessible by type.
+
+@export exposes weapon properties in the Inspector.
+
+is_equipped tracks the weapon's current state.
+
+equip() makes the weapon visible.
+
+unequip() hides the weapon.
+
+For V1, the weapon is a data container with equip/unequip behavior. Firing and damage application will come in a later version.
+
+4. Weapon Manager — weapon_manager.gd
+
+Attach this script to WeaponManager under the player.
+
+
+extends Node3D
+
+@onready var weapon_socket: Marker3D = $WeaponSocket
+
+var current_weapon: WeaponComponent = null
+
+
+func pickup_weapon(weapon_scene: PackedScene) -> void:
+    # Remove the currently equipped weapon.
+    if current_weapon != null:
+        current_weapon.queue_free()
+        current_weapon = null
+
+    # Create the new weapon.
+    var weapon = weapon_scene.instantiate() as WeaponComponent
+
+    if weapon == null:
+        push_error("Weapon scene needs WeaponComponent.")
+        return
+
+    weapon_socket.add_child(weapon)
+
+    weapon.position = Vector3.ZERO
+    weapon.rotation = Vector3.ZERO
+
+    current_weapon = weapon
+    current_weapon.equip()
+
+
+func equip_weapon() -> void:
+    if current_weapon == null:
+        print("No weapon available.")
+        return
+
+    current_weapon.equip()
+
+
+func unequip_weapon() -> void:
+    if current_weapon == null:
+        return
+
+    current_weapon.unequip()
+
+
+func toggle_weapon() -> void:
+    if current_weapon == null:
+        print("No weapon available.")
+        return
+
+    if current_weapon.is_equipped:
+        current_weapon.unequip()
+    else:
+        current_weapon.equip()
+
+Important design decision: This first version keeps one weapon slot. Picking up a different weapon replaces the existing one. We'll change this to an inventory of multiple weapons in a future version.
+
+5. Weapon Interactable — weapon_interactable.gd
+
+This script allows a weapon pickup to communicate with the player's interaction system.
+
+Attach it to the WeaponPickup root, which is an Area3D.
+
+
+extends Area3D
+class_name WeaponInteractable
+
+@export var weapon_scene: PackedScene
+@export var prompt_text: String = "Press E to pick up weapon"
+
+var is_available: bool = true
+
+
+func interact(player: Node) -> void:
+    if not is_available:
+        return
+
+    if weapon_scene == null:
+        push_error("Assign a weapon scene in the Inspector.")
+        return
+
+    var weapon_manager = player.get_node_or_null(
+        "WeaponManager"
+    )
+
+    if weapon_manager == null:
+        push_error("Player has no WeaponManager.")
+        return
+
+    weapon_manager.pickup_weapon(weapon_scene)
+
+    is_available = false
+    queue_free()
+How interaction works
+
+The player's interaction ray detects the pickup.
+
+Your existing interaction system displays prompt_text.
+
+The player presses E.
+
+The interaction system calls interact(player).
+
+The manager creates the weapon and equips it.
+
+The pickup is removed from the world.
+
+Integration note: If your existing interaction system uses a different method signature, such as interact() without a player argument, adapt the method to match that interface.
+
+6. Connect the player input
+
+Add this logic to your existing player.gd. Keep your current movement, camera, animation, and health logic unchanged.
+
+@onready var weapon_manager = $WeaponManager
+
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event.is_action_pressed("weapon_toggle"):
+        weapon_manager.toggle_weapon()
+
+In Project → Project Settings → Input Map, add:
+
+Action
+
+	
+
+Key
+
+
+
+
+weapon_toggle
+
+	
+
+1
+
+
+
+
+interact
+
+	
+
+E
+
+Your existing interaction system should continue to handle interact; the code above handles only weapon toggling.
+
+7. Create a weapon scene
+
+Pistol.tscn
+
+Root: Node3D
+
+Script: weapon_component.gd
+
+Child: MeshInstance3D
+
+Name: Pistol
+
+Damage: 10
+
+Magazine size: 12
+
+Rifle.tscn
+
+Root: Node3D
+
+Script: weapon_component.gd
+
+Child: MeshInstance3D
+
+Name: Rifle
+
+Damage: 25
+
+Magazine size: 30
+
+These are example weapon types; placeholder meshes are sufficient for testing.
+
+Then create WeaponPickup.tscn and assign Pistol.tscn or Rifle.tscn to the weapon_scene property in the Inspector.
+
+8. V1 testing checklist
+
+Implementation checklist
+
+0/7
+
+Player can detect a weapon pickup using the existing interaction ray.
+Interaction prompt appears when aiming at the pickup.
+Pressing E collects the weapon.
+The weapon appears at WeaponSocket.
+Pressing 1 hides the equipped weapon.
+Pressing 1 again makes the weapon visible.
+Picking up a different weapon replaces the current weapon.
+9. Planned weapon system versions
+
+Version
+
+	
+
+Features
+
+
+
+
+V1 — Current
+
+	
+
+Pickup, weapon component, equip and unequip
+
+
+
+
+V2
+
+	
+
+Multiple weapons, inventory, weapon switching
+
+
+
+
+V3
+
+	
+
+Fire, hit detection, damage, weapon cooldown
+
+
+
+
+V4
+
+	
+
+Ammo, magazine, reload, HUD
+
+
+
+
+V5
+
+	
+
+Attachments, weapon stats, rarity, upgrades
+
+Next step: Integrate WeaponInteractable with your existing raycast-based interaction system so that the weapon pickup uses the same interaction prompt and input flow as your doors, switches, and other interactables.

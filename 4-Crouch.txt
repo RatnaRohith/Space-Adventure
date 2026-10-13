@@ -1,0 +1,220 @@
+Let's add crouching to your Godot 4 CharacterBody3D player controller. The updated script supports WASD movement, gravity, jumping, sprinting, and crouching.
+
+WASD: Move
+
+Shift: Sprint
+
+Space: Jump
+
+C: Toggle crouch on/off
+
+1. Complete Player Movement Script
+
+extends CharacterBody3D
+
+const SPEED = 5.0
+const SPRINT_SPEED = 8.0
+const CROUCH_SPEED = 2.5
+const JUMP_VELOCITY = 4.5
+
+var is_crouching = false
+
+func _physics_process(delta: float) -> void:
+
+    # Apply gravity
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+
+    # Handle crouching
+    if Input.is_action_just_pressed("crouch"):
+        is_crouching = not is_crouching
+
+    # Read player input
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    # Calculate movement direction
+    var direction = transform.basis * Vector3(
+        input_dir.x,
+        0,
+        input_dir.y
+    )
+
+    # Select movement speed
+    var current_speed = SPEED
+
+    if is_crouching:
+        current_speed = CROUCH_SPEED
+    elif Input.is_action_pressed("sprint"):
+        current_speed = SPRINT_SPEED
+
+    # Apply horizontal movement
+    if direction.length() > 0.0:
+        direction = direction.normalized()
+        velocity.x = direction.x * current_speed
+        velocity.z = direction.z * current_speed
+    else:
+        velocity.x = move_toward(velocity.x, 0.0, SPEED * delta)
+        velocity.z = move_toward(velocity.z, 0.0, SPEED * delta)
+
+    # Handle jumping
+    if Input.is_action_just_pressed("ui_accept") and is_on_floor():
+        if not is_crouching:
+            velocity.y = JUMP_VELOCITY
+
+    # Move character and handle collisions
+    move_and_slide()
+2. How the crouch logic works
+A. Crouch state
+var is_crouching = false
+
+This variable stores whether the player is crouching.
+
+false — standing.
+
+true — crouching.
+
+B. Toggle crouching
+if Input.is_action_just_pressed("crouch"):
+    is_crouching = not is_crouching
+
+Each press of the crouch key reverses the state:
+
+Current state
+
+	
+
+Press C
+
+	
+
+New state
+
+
+
+
+Standing
+
+	
+
+C
+
+	
+
+Crouching
+
+
+
+
+Crouching
+
+	
+
+C
+
+	
+
+Standing
+
+This is a toggle crouch system, rather than crouching only while the key is held.
+
+C. Crouch movement speed
+if is_crouching:
+    current_speed = CROUCH_SPEED
+elif Input.is_action_pressed("sprint"):
+    current_speed = SPRINT_SPEED
+
+Crouching takes priority over sprinting. The player moves at 2.5 units per second while crouched, even if Shift is pressed.
+
+3. Configure Input Map
+
+Open Project → Project Settings → Input Map and add the following actions if they don't already exist.
+
+Action
+
+	
+
+Key
+
+
+
+
+move_forward
+
+	
+
+W
+
+
+
+
+move_backward
+
+	
+
+S
+
+
+
+
+move_left
+
+	
+
+A
+
+
+
+
+move_right
+
+	
+
+D
+
+
+
+
+sprint
+
+	
+
+Left Shift
+
+
+
+
+crouch
+
+	
+
+C
+
+
+
+
+ui_accept
+
+	
+
+Space
+
+4. Important: This currently changes speed only
+
+The script slows the player when crouching, but it does not physically lower the character.
+
+For a complete third-person controller, the next step is to add:
+
+Crouch and standing collision capsule heights.
+
+Camera height adjustment.
+
+A ceiling check so the player cannot stand up beneath a low ceiling.
+
+Optional crouch animations using AnimationTree.
+
+These additions will make crouching work correctly for stealth gameplay and low-clearance environments.

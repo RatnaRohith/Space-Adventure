@@ -1,0 +1,167 @@
+Here is the updated Godot 4 CharacterBody3D script with WASD movement, gravity, jumping, and sprinting.
+
+Complete Player Movement Script
+extends CharacterBody3D
+
+const SPEED = 5.0
+const SPRINT_SPEED = 8.0
+const JUMP_VELOCITY = 4.5
+
+func _physics_process(delta: float) -> void:
+
+    # Apply gravity
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+
+    # Read player input
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    # Calculate movement direction
+    var direction = transform.basis * Vector3(
+        input_dir.x,
+        0,
+        input_dir.y
+    )
+
+    # Select movement speed
+    var current_speed = SPEED
+
+    if Input.is_action_pressed("sprint"):
+        current_speed = SPRINT_SPEED
+
+    # Apply horizontal movement
+    if direction:
+        direction = direction.normalized()
+        velocity.x = direction.x * current_speed
+        velocity.z = direction.z * current_speed
+    else:
+        velocity.x = move_toward(velocity.x, 0, SPEED)
+        velocity.z = move_toward(velocity.z, 0, SPEED)
+
+    # Handle jumping
+    if Input.is_action_just_pressed("ui_accept") and is_on_floor():
+        velocity.y = JUMP_VELOCITY
+
+    # Move character and handle collisions
+    move_and_slide()
+How sprinting works
+const SPEED = 5.0
+const SPRINT_SPEED = 8.0
+
+SPEED: Normal movement speed.
+
+SPRINT_SPEED: Faster movement speed while sprinting.
+
+var current_speed = SPEED
+
+if Input.is_action_pressed("sprint"):
+    current_speed = SPRINT_SPEED
+
+The character starts with normal speed.
+
+When the sprint action is pressed, speed changes to 8.0.
+
+When the sprint key is released, speed returns to 5.0.
+
+Configure the sprint key
+
+Open Project → Project Settings → Input Map.
+
+Create an action named sprint.
+
+Assign the Shift key, such as Left Shift.
+
+Action
+
+	
+
+Key
+
+	
+
+Speed
+
+
+
+
+Move forward
+
+	
+
+W
+
+	
+
+5.0
+
+
+
+
+Move backward
+
+	
+
+S
+
+	
+
+5.0
+
+
+
+
+Move left
+
+	
+
+A
+
+	
+
+5.0
+
+
+
+
+Move right
+
+	
+
+D
+
+	
+
+5.0
+
+
+
+
+Sprint
+
+	
+
+Shift
+
+	
+
+8.0
+
+
+
+
+Jump
+
+	
+
+Space
+
+	
+
+—
+
+Small improvement: In the stopping code, you can use SPRINT_SPEED * delta or, preferably, a separate ACCELERATION * delta for move_toward(). This makes deceleration frame-rate independent and allows you to tune how quickly the character stops.

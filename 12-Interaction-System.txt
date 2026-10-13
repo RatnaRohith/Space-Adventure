@@ -1,0 +1,313 @@
+Lets add a interaction System with a raycast and a label that shows prompt for interacting with objects and a script to detect collisions , seperate interactable script that can be extended for interactables
+
+Let's build a reusable Interaction System for your Godot 4 TPS controller, using a raycast, an on-screen interaction prompt, a collision detection script, and an extensible Interactable base script.
+
+We'll keep it modular, consistent with your existing Player.gd, MovementStateMachine, CameraController, AnimationController, HealthComponent, and PlayerHUD.
+
+1. Interaction system architecture
+
+The player looks at an object, the raycast detects it, the interaction system checks whether it is interactable, and the HUD displays a prompt. When the player presses the interaction key, the object's own script handles the action.
+
+Player Camera
+
+Aim at an object
+
+InteractionRayCast — RayCast3D
+
+Detects objects in front of the camera
+
+InteractionController.gd
+
+Detects collision and checks interactability
+
+InteractionPrompt
+
+Shows “[E] Open Door”
+
+Interactable.gd
+
+Base script for object behavior
+
+2. Create the scene structure
+
+Add these nodes to your existing player scene. The raycast should be positioned and aimed along the camera's viewing direction.
+
+Player (CharacterBody3D)
+├── CameraPivot
+│   └── Camera3D
+│       └── InteractionRayCast (RayCast3D)
+├── MovementStateMachine
+├── AnimationController
+├── HealthComponent
+├── InteractionController (Node)
+└── PlayerHUD (CanvasLayer)
+    └── HUDContainer
+        └── InteractionPrompt (Label)
+
+Configure InteractionRayCast:
+
+Enabled: On
+
+Target Position: (0, 0, -3)
+
+Collide With Bodies: On
+
+Collide With Areas: On if your interactables use Area3D
+
+Collision Mask: Include the layers used by interactable objects.
+
+Set InteractionPrompt to a centered position near the bottom of the screen. Set its initial text to empty and hide it in the Inspector.
+
+Create an Input Map action called interact and bind it to E.
+
+3. Create the reusable Interactable base script
+
+Create res://Systems/Interaction/Interactable.gd.
+
+This is the base class that doors, switches, loot containers, vehicles, and NPCs can extend. Each object can customize its prompt and interaction behavior.
+
+
+extends StaticBody3D
+class_name Interactable
+
+@export var interaction_name: String = "Interact"
+@export var interaction_enabled: bool = true
+
+func get_interaction_prompt() -> String:
+	return "[E] " + interaction_name
+
+
+func can_interact(_interactor: Node) -> bool:
+	return interaction_enabled
+
+
+func interact(_interactor: Node) -> void:
+	# Override this function in child interactables.
+	pass
+Understanding the base script
+
+class_name Interactable makes the class available for type checking in other scripts.
+
+interaction_name defines the text shown to the player.
+
+can_interact() lets each object decide whether interaction is currently allowed.
+
+interact() is the function that child scripts override to perform their actions.
+
+The base class extends StaticBody3D, so its root has a physics collision body that the raycast can detect.
+
+4. Create the collision detection script
+
+Create res://Systems/Interaction/CollisionDetector.gd and attach it to a Node named CollisionDetector, which will be a child of InteractionController.
+
+This script is responsible for detecting which object the player is looking at. It does not execute interactions.
+
+
+extends Node
+
+signal target_changed(target: Interactable)
+
+@export var interaction_ray: RayCast3D
+
+var current_target: Interactable = null
+
+
+func _physics_process(_delta: float) -> void:
+	if interaction_ray == null:
+		return
+
+	interaction_ray.force_raycast_update()
+
+	var new_target: Interactable = null
+
+	if interaction_ray.is_colliding():
+		var collider := interaction_ray.get_collider()
+
+		if collider is Interactable:
+			if collider.can_interact(get_parent().get_parent()):
+				new_target = collider
+
+	if new_target != current_target:
+		current_target = new_target
+		target_changed.emit(current_target)
+
+In the Inspector, assign InteractionRayCast to the interaction_ray property.
+
+Important: This version expects the scene hierarchy to be:
+
+Player
+└── InteractionController
+    └── CollisionDetector
+
+Here, get_parent().get_parent() resolves to Player. If you change the hierarchy later, we can replace this with an exported player reference.
+
+The raycast detects collision objects. This implementation accepts objects whose collider is an Interactable; if you later use nested Area3D hitboxes, we can add parent lookup so those areas resolve to their owning interactable.
+
+5. Create the InteractionController script
+
+Create res://Systems/Interaction/InteractionController.gd and attach it to the InteractionController node.
+
+It handles the input and calls the interactable object's interact() method.
+
+
+extends Node
+
+@export var collision_detector: Node
+@export var interaction_prompt: Label
+
+var current_target: Interactable = null
+
+
+func _ready() -> void:
+	interaction_prompt.hide()
+
+	collision_detector.target_changed.connect(
+		_on_target_changed
+	)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("interact"):
+		if is_instance_valid(current_target):
+			if current_target.can_interact(get_parent()):
+				current_target.interact(get_parent())
+
+
+func _on_target_changed(target: Interactable) -> void:
+	current_target = target
+
+	if not is_instance_valid(current_target):
+		interaction_prompt.hide()
+		return
+
+	interaction_prompt.text = (
+		current_target.get_interaction_prompt()
+	)
+	interaction_prompt.show()
+
+Assign these references in the Inspector:
+
+collision_detector → the CollisionDetector node.
+
+interaction_prompt → PlayerHUD/HUDContainer/InteractionPrompt.
+
+If you already have an _unhandled_input() function in your player script, this one can remain in InteractionController.gd because it is a separate node.
+
+6. Extend Interactable for a door
+
+Now create a door that uses the reusable base script.
+
+Scene structure:
+
+Door (StaticBody3D)
+├── MeshInstance3D
+└── CollisionShape3D
+
+Create Door.gd and use extends Interactable.
+
+
+extends Interactable
+
+@export var open_rotation_degrees: float = 90.0
+
+var is_open: bool = false
+
+
+func _ready() -> void:
+	interaction_name = "Open Door"
+
+
+func get_interaction_prompt() -> String:
+	if is_open:
+		return "[E] Close Door"
+
+	return "[E] Open Door"
+
+
+func interact(_interactor: Node) -> void:
+	is_open = not is_open
+
+	if is_open:
+		rotation_degrees.y = open_rotation_degrees
+	else:
+		rotation_degrees.y = 0.0
+
+Attach Door.gd to the Door root instead of Interactable.gd. The child script inherits the base behavior.
+
+For this simple prototype, the door rotates instantly. Later, you can use a Tween for smooth opening and closing, and move the collision shape with the door or disable it when appropriate.
+
+7. Extend Interactable for a switch
+
+Create a switch scene:
+
+Switch (StaticBody3D)
+├── MeshInstance3D
+└── CollisionShape3D
+
+Create Switch.gd:
+
+
+extends Interactable
+
+signal switch_activated
+
+var is_activated: bool = false
+
+
+func _ready() -> void:
+	interaction_name = "Activate Switch"
+
+
+func interact(_interactor: Node) -> void:
+	is_activated = not is_activated
+
+	if is_activated:
+		interaction_name = "Deactivate Switch"
+	else:
+		interaction_name = "Activate Switch"
+
+	switch_activated.emit()
+
+	print("Switch activated: ", is_activated)
+
+The switch can later emit a signal to open a door, activate a generator, turn on lights, or start an objective. For a larger project, you can connect those signals through a quest or event system.
+
+8. Final scene structure
+
+Your interaction system is now separated into reusable parts.
+
+Player
+
+Camera3D/InteractionRayCast
+
+InteractionController
+
+• InteractionController.gd — input and interaction
+
+• CollisionDetector.gd — target detection
+
+PlayerHUD/InteractionPrompt
+
+Reusable interactable objects
+
+Door
+
+Switch
+
+Loot Container
+
+Vehicle
+
+Each object extends Interactable.gd and implements its own behavior.
+
+9. Testing checklist
+Look at a door within 3 metres: [E] Open Door appears.
+Look away: the prompt disappears.
+Press E: the door opens.
+Look at the open door: [E] Close Door appears.
+Press E again: the door closes.
+Look at a switch: its interaction prompt appears.
+Press E: the switch toggles and emits its signal.
+Look at a non-interactable object: no interaction prompt appears.
+
+Next recommended system: an InteractableComponent approach for Area3D hitboxes, NPC dialogue, loot containers, and vehicles, followed by an interaction system that supports multiple interaction types and contextual prompts.

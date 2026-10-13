@@ -1,0 +1,560 @@
+add a seperate movement state machine node to player and add seperate states to it that can be called into the player.gd script
+
+We’ll refactor your Godot 4 TPS controller so the movement state machine is a separate node, with each movement state implemented in its own script. Your Player.gd will communicate with the state machine instead of managing all movement states directly.
+
+We’ll preserve your existing features: WASD movement, gravity, jumping, sprinting, crouching, camera rotation, and smooth camera height adjustment.
+
+1. Create the scene structure
+
+Create the following node hierarchy in your Player.tscn scene.
+
+Player (CharacterBody3D)
+
+CollisionShape3D
+
+CameraPivot (Node3D)
+
+SpringArm3D
+
+Camera3D
+
+MovementStateMachine (Node)
+
+IdleState
+
+WalkingState
+
+SprintingState
+
+CrouchingState
+
+Each state will be a child node with its own script. The state machine will select the active state, and Player.gd will handle shared movement physics and camera controls.
+
+2. Create the scripts
+
+Create a folder structure like this:
+
+res://
+├── Player/
+│   ├── Player.tscn
+│   ├── Player.gd
+│   └── MovementStates/
+│       ├── movement_state.gd
+│       ├── movement_state_machine.gd
+│       ├── idle_state.gd
+│       ├── walking_state.gd
+│       ├── sprinting_state.gd
+│       └── crouching_state.gd
+Script 1: movement_state.gd
+
+This is the base class shared by all movement states.
+
+
+extends Node
+class_name MovementState
+
+
+func get_speed() -> float:
+    return 0.0
+
+What it does: Defines a common function that each movement state overrides to return its movement speed.
+
+Script 2: idle_state.gd
+
+Attach this script to the IdleState node.
+
+
+extends MovementState
+
+
+func get_speed() -> float:
+    return 0.0
+
+When the player is not moving, the target movement speed is zero.
+
+Script 3: walking_state.gd
+
+Attach this script to the WalkingState node.
+
+
+extends MovementState
+
+const SPEED = 5.0
+
+
+func get_speed() -> float:
+    return SPEED
+Script 4: sprinting_state.gd
+
+Attach this script to the SprintingState node.
+
+
+extends MovementState
+
+const SPRINT_SPEED = 8.0
+
+
+func get_speed() -> float:
+    return SPRINT_SPEED
+Script 5: crouching_state.gd
+
+Attach this script to the CrouchingState node.
+
+
+extends MovementState
+
+const CROUCH_SPEED = 2.5
+
+
+func get_speed() -> float:
+    return CROUCH_SPEED
+3. Create movement_state_machine.gd
+
+Attach this script to the MovementStateMachine node.
+
+This script determines which state should be active and exposes the current state to Player.gd.
+
+
+extends Node
+
+signal state_changed(new_state: String)
+
+@onready var idle_state: MovementState = $IdleState
+@onready var walking_state: MovementState = $WalkingState
+@onready var sprinting_state: MovementState = $SprintingState
+@onready var crouching_state: MovementState = $CrouchingState
+
+var current_state: MovementState
+
+
+func _ready() -> void:
+    change_state(idle_state)
+
+
+func update_state(
+    is_crouching: bool,
+    input_dir: Vector2
+) -> void:
+
+    # Crouching has the highest priority.
+    if is_crouching:
+        change_state(crouching_state)
+
+    # No movement input means idle.
+    elif input_dir == Vector2.ZERO:
+        change_state(idle_state)
+
+    # Sprint when the sprint key is pressed.
+    elif Input.is_action_pressed("sprint"):
+        change_state(sprinting_state)
+
+    # Otherwise, walk.
+    else:
+        change_state(walking_state)
+
+
+func change_state(new_state: MovementState) -> void:
+
+    # Do not transition if already in this state.
+    if current_state == new_state:
+        return
+
+    current_state = new_state
+
+    state_changed.emit(current_state.name)
+
+
+func get_movement_speed() -> float:
+
+    if current_state == null:
+        return 0.0
+
+    return current_state.get_speed()
+How the state machine works
+
+Read player input
+
+WASD · Sprint · Crouch
+
+MovementStateMachine
+
+Evaluates conditions in priority order
+
+IdleState
+
+0.0
+
+No input
+
+WalkingState
+
+5.0
+
+Normal movement
+
+SprintingState
+
+8.0
+
+Sprint pressed
+
+CrouchingState
+
+2.5
+
+Crouch enabled
+
+The state machine chooses a state, and the player retrieves its speed through get_movement_speed().
+
+4. Replace Player.gd
+
+This version removes the original movement enum and moves state selection into the separate node. Gravity, jumping, camera rotation, crouch toggling, and movement physics remain in the player script.
+
+
+extends CharacterBody3D
+
+
+# Movement settings
+const JUMP_VELOCITY = 4.5
+const ACCELERATION = 20.0
+
+# Camera settings
+const MOUSE_SENSITIVITY = 0.003
+const STANDING_CAMERA_HEIGHT = 1.5
+const CROUCH_CAMERA_HEIGHT = 1.0
+const CAMERA_SMOOTHING = 8.0
+
+
+var is_crouching: bool = false
+
+
+# Camera references
+@onready var camera_pivot: Node3D = $CameraPivot
+
+# State machine reference
+@onready var movement_state_machine: Node = \
+    $MovementStateMachine
+
+
+func _ready() -> void:
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _unhandled_input(event: InputEvent) -> void:
+
+    # Rotate camera with mouse.
+    if event is InputEventMouseMotion:
+        if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+
+            camera_pivot.rotation.y -= (
+                event.relative.x * MOUSE_SENSITIVITY
+            )
+
+            camera_pivot.rotation.x -= (
+                event.relative.y * MOUSE_SENSITIVITY
+            )
+
+            camera_pivot.rotation.x = clampf(
+                camera_pivot.rotation.x,
+                deg_to_rad(-60.0),
+                deg_to_rad(60.0)
+            )
+
+    # Release mouse with Escape.
+    if event.is_action_pressed("ui_cancel"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+    # Capture mouse again with left click.
+    if event is InputEventMouseButton and event.pressed:
+        if event.button_index == MOUSE_BUTTON_LEFT:
+            Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _physics_process(delta: float) -> void:
+
+    apply_gravity(delta)
+
+    handle_crouch_input()
+
+    update_camera_height(delta)
+
+    handle_jump()
+
+    # Update the separate movement state machine.
+    var input_dir = get_movement_input()
+
+    movement_state_machine.update_state(
+        is_crouching,
+        input_dir
+    )
+
+    # Move using the speed returned by the active state.
+    handle_movement(delta, input_dir)
+
+    move_and_slide()
+
+
+# Read WASD input.
+func get_movement_input() -> Vector2:
+
+    return Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+
+# Apply gravity.
+func apply_gravity(delta: float) -> void:
+
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+
+
+# Toggle crouching.
+func handle_crouch_input() -> void:
+
+    if Input.is_action_just_pressed("crouch"):
+        is_crouching = not is_crouching
+
+
+# Smoothly adjust camera height.
+func update_camera_height(delta: float) -> void:
+
+    var target_height = STANDING_CAMERA_HEIGHT
+
+    if is_crouching:
+        target_height = CROUCH_CAMERA_HEIGHT
+
+    camera_pivot.position.y = lerpf(
+        camera_pivot.position.y,
+        target_height,
+        clampf(CAMERA_SMOOTHING * delta, 0.0, 1.0)
+    )
+
+
+# Handle jumping.
+func handle_jump() -> void:
+
+    if Input.is_action_just_pressed("ui_accept"):
+        if is_on_floor() and not is_crouching:
+            velocity.y = JUMP_VELOCITY
+
+
+# Handle camera-relative movement.
+func handle_movement(
+    delta: float,
+    input_dir: Vector2
+) -> void:
+
+    var direction = Vector3(
+        input_dir.x,
+        0.0,
+        input_dir.y
+    ).rotated(
+        Vector3.UP,
+        camera_pivot.global_rotation.y
+    ).normalized()
+
+    var target_speed: float = \
+        movement_state_machine.get_movement_speed()
+
+    velocity.x = move_toward(
+        velocity.x,
+        direction.x * target_speed,
+        ACCELERATION * delta
+    )
+
+    velocity.z = move_toward(
+        velocity.z,
+        direction.z * target_speed,
+        ACCELERATION * delta
+    )
+5. Configure the Input Map
+
+Open Project → Project Settings → Input Map and verify these actions exist:
+
+Action
+
+	
+
+Suggested key
+
+
+
+
+move_forward
+
+	
+
+W
+
+
+
+
+move_backward
+
+	
+
+S
+
+
+
+
+move_left
+
+	
+
+A
+
+
+
+
+move_right
+
+	
+
+D
+
+
+
+
+sprint
+
+	
+
+Shift
+
+
+
+
+crouch
+
+	
+
+C
+
+
+
+
+ui_accept
+
+	
+
+Space
+
+
+
+
+ui_cancel
+
+	
+
+Escape
+
+6. Test the state machine
+
+Run the scene and test these transitions.
+
+Input
+
+	
+
+Active state
+
+	
+
+Speed
+
+
+
+
+No input
+
+	
+
+IdleState
+
+	
+
+0.0
+
+
+
+
+WASD
+
+	
+
+WalkingState
+
+	
+
+5.0
+
+
+
+
+WASD + Shift
+
+	
+
+SprintingState
+
+	
+
+8.0
+
+
+
+
+Crouch + WASD
+
+	
+
+CrouchingState
+
+	
+
+2.5
+
+
+
+
+Release WASD while crouching
+
+	
+
+CrouchingState
+
+	
+
+2.5
+
+
+
+
+Stand up with no movement input
+
+	
+
+IdleState
+
+	
+
+0.0
+
+The state machine also emits a state_changed signal whenever the active state changes. You can connect this signal to an AnimationTree controller later.
+
+Important: This version changes the camera height during crouching, but it does not resize the player's collision shape. Add collision-shape adjustment and a ceiling-clearance check before using crouching in levels with low obstacles.
+
+Your controller is now organized into three responsibilities:
+
+Player.gd — input, gravity, jumping, camera and movement physics.
+
+MovementStateMachine.gd — state selection and transitions.
+
+Individual state scripts — behavior specific to Idle, Walking, Sprinting and Crouching.
+
+This structure is ready to extend with additional states such as Jumping, Falling, Rolling, Sliding, Jetpacking and Wall Running.

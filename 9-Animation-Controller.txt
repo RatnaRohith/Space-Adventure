@@ -1,0 +1,254 @@
+Lets Add Animations with a seperate animation controller to the player
+
+Let's add a separate AnimationController.gd to your Godot 4 TPS player. We'll keep the same modular architecture you've built for the player movement and camera.
+
+The animation controller will read the player's movement state and velocity, then control an AnimationTree to play the appropriate animations. Your Player.gd will not need to manage animation transitions directly.
+
+1. Updated scene hierarchy
+
+Player (CharacterBody3D)
+
+Player.gd
+
+CollisionShape3D
+
+CameraPivot — CameraController.gd
+
+MovementStateMachine
+
+AnimationController (Node)
+
+AnimationController.gd
+
+AnimationTree
+
+AnimationPlayer
+
+Visuals (Node3D or imported character model)
+
+The AnimationPlayer stores your animation clips, while the AnimationTree blends and transitions between them. The controller script connects those animations to your movement system.
+
+2. Set up the animation assets
+
+Before writing the script, add your character model and animations.
+
+In Godot, an imported animated character commonly has a Skeleton3D and an AnimationPlayer containing clips such as Idle, Walk, Run, and Crouch.
+
+For this first version, prepare these four animations:
+
+Animation state
+
+	
+
+Animation clip
+
+	
+
+Purpose
+
+
+
+
+Idle
+
+	
+
+Idle
+
+	
+
+Standing still
+
+
+
+
+Walk
+
+	
+
+Walk
+
+	
+
+Normal WASD movement
+
+
+
+
+Sprint
+
+	
+
+Run
+
+	
+
+Sprinting movement
+
+
+
+
+Crouch
+
+	
+
+Crouch Walk
+
+	
+
+Crouched movement
+
+You can use placeholder clips initially. The animation state names below are the names used in the AnimationTree, not necessarily the original animation clip names.
+
+3. Configure the AnimationTree
+
+Select AnimationTree in the Inspector.
+
+Set Anim Player to the path of your character's AnimationPlayer. For the hierarchy above, use ../Visuals/AnimationPlayer.
+
+Enable Active.
+
+Create a new AnimationNodeStateMachine in the Tree Root property.
+
+Open the AnimationTree state machine editor.
+
+Add four animation nodes and assign the corresponding clips.
+
+Animation state machine
+
+Idle
+
+Walk
+
+Sprint
+
+Crouch
+
+Create transitions between the states in the AnimationTree editor. The controller will request the appropriate destination using playback.travel().
+
+Create transitions between the states so the player can switch between Idle, Walk, Sprint, and Crouch. You can configure transition durations in the editor for smoother blending.
+
+4. Create AnimationController.gd
+
+Attach this script to the AnimationController node.
+
+
+extends Node
+class_name PlayerAnimationController
+
+@export var movement_state_machine_path: NodePath = \
+    NodePath("../MovementStateMachine")
+
+@onready var animation_tree: AnimationTree = $AnimationTree
+
+var playback: AnimationNodeStateMachinePlayback
+var movement_state_machine: Node
+
+
+func _ready() -> void:
+
+    movement_state_machine = get_node(
+        movement_state_machine_path
+    )
+
+    animation_tree.active = true
+
+    playback = animation_tree.get(
+        "parameters/playback"
+    )
+
+
+func update_animation(
+    is_crouching: bool,
+    velocity: Vector3
+) -> void:
+
+    var horizontal_speed = Vector2(
+        velocity.x,
+        velocity.z
+    ).length()
+
+    var target_animation: String = "Idle"
+
+    # Crouching has priority over other movement animations.
+    if is_crouching:
+        target_animation = "Crouch"
+
+    elif horizontal_speed < 0.1:
+        target_animation = "Idle"
+
+    # Check the active movement state.
+    elif movement_state_machine.current_state.name \
+        == "SprintingState":
+        target_animation = "Sprint"
+
+    else:
+        target_animation = "Walk"
+
+    # Transition to the requested animation.
+    if playback.get_current_node() != target_animation:
+        playback.travel(target_animation)
+
+This controller reads the active movement state rather than duplicating the walking and sprinting rules. It also uses horizontal velocity to distinguish standing still from moving.
+
+5. Connect the animation controller to Player.gd
+
+Add a reference alongside your existing camera and movement state machine references:
+
+
+@onready var animation_controller: PlayerAnimationController = \
+    $AnimationController
+
+Then call the animation controller after move_and_slide() in your existing _physics_process() function:
+
+
+func _physics_process(delta: float) -> void:
+
+    apply_gravity(delta)
+    handle_crouch_input()
+    handle_jump()
+
+    var input_dir = get_movement_input()
+
+    movement_state_machine.update_state(
+        is_crouching,
+        input_dir
+    )
+
+    handle_movement(delta, input_dir)
+
+    move_and_slide()
+
+    # Update animation using the resulting velocity.
+    animation_controller.update_animation(
+        is_crouching,
+        velocity
+    )
+
+Keep your existing helper functions and camera controller unchanged.
+
+6. Test the animations
+
+Run the scene and check these expected behaviors:
+
+No movement input → Idle
+
+WASD movement → Walk
+
+WASD + Shift → Sprint
+
+Press C → Crouch
+
+Release C → Idle or Walk, depending on movement
+
+Important: This first version selects whole-body animation clips. It does not yet handle jumping, falling, landing, or blending between movement directions. Also, Crouch is selected whenever crouching is enabled, even if the player is stationary. We can refine that into separate CrouchIdle and CrouchWalk states later.
+
+Your player now has three independent systems:
+
+MovementStateMachine — decides how the player moves.
+
+CameraController — manages the camera.
+
+AnimationController — selects and transitions between animation clips.
+
+The next useful addition is a Jump/Fall/Land animation state system, integrated with is_on_floor() and vertical velocity, so your character's animations respond correctly to jumping and falling.

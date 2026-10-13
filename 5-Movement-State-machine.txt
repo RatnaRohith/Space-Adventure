@@ -1,0 +1,335 @@
+Let's convert your Godot 4 player controller into a movement state machine. Instead of handling standing, sprinting, and crouching as separate conditions scattered throughout the script, we'll use explicit states to manage the player's movement.
+
+We'll keep your existing features:
+
+WASD movement
+
+Gravity and jumping
+
+Sprinting with Shift
+
+Toggle crouch with C
+
+Collision handling with move_and_slide()
+
+1. Design the movement state machine
+
+IDLE
+
+No movement input
+
+Movement input
+
+WALKING
+
+Normal speed: 5.0
+
+Hold Shift
+
+SPRINTING
+
+Sprint speed: 8.0
+
+CROUCHING
+
+Speed: 2.5
+
+JUMPING / FALLING
+
+Vertical movement
+
+Jumping and falling can occur while the horizontal movement state remains idle, walking, or sprinting. Crouching disables jumping.
+
+We'll use an enum to define the states and a current_state variable to track which state is active.
+
+2. Complete movement state machine script
+
+Attach this script to your CharacterBody3D player node.
+
+
+extends CharacterBody3D
+
+# Movement speeds
+const SPEED = 5.0
+const SPRINT_SPEED = 8.0
+const CROUCH_SPEED = 2.5
+const JUMP_VELOCITY = 4.5
+const ACCELERATION = 20.0
+
+# Define movement states
+enum MovementState {
+    IDLE,
+    WALKING,
+    SPRINTING,
+    CROUCHING
+}
+
+# Current movement state
+var current_state: MovementState = MovementState.IDLE
+
+# Crouch toggle
+var is_crouching = false
+
+
+func _physics_process(delta: float) -> void:
+    apply_gravity(delta)
+    handle_crouch_input()
+    handle_jump()
+    update_movement_state()
+    handle_movement(delta)
+    move_and_slide()
+
+
+# Apply gravity while airborne
+func apply_gravity(delta: float) -> void:
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+
+
+# Toggle crouching
+func handle_crouch_input() -> void:
+    if Input.is_action_just_pressed("crouch"):
+        is_crouching = not is_crouching
+
+
+# Handle jumping
+func handle_jump() -> void:
+    if Input.is_action_just_pressed("ui_accept"):
+        if is_on_floor() and not is_crouching:
+            velocity.y = JUMP_VELOCITY
+
+
+# Determine the current movement state
+func update_movement_state() -> void:
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    if is_crouching:
+        current_state = MovementState.CROUCHING
+
+    elif input_dir == Vector2.ZERO:
+        current_state = MovementState.IDLE
+
+    elif Input.is_action_pressed("sprint"):
+        current_state = MovementState.SPRINTING
+
+    else:
+        current_state = MovementState.WALKING
+
+
+# Execute movement based on the current state
+func handle_movement(delta: float) -> void:
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    var direction = transform.basis * Vector3(
+        input_dir.x,
+        0.0,
+        input_dir.y
+    )
+
+    direction = direction.normalized()
+
+    var target_speed = 0.0
+
+    match current_state:
+        MovementState.IDLE:
+            target_speed = 0.0
+
+        MovementState.WALKING:
+            target_speed = SPEED
+
+        MovementState.SPRINTING:
+            target_speed = SPRINT_SPEED
+
+        MovementState.CROUCHING:
+            target_speed = CROUCH_SPEED
+
+    velocity.x = move_toward(
+        velocity.x,
+        direction.x * target_speed,
+        ACCELERATION * delta
+    )
+
+    velocity.z = move_toward(
+        velocity.z,
+        direction.z * target_speed,
+        ACCELERATION * delta
+    )
+3. How the state machine works
+Step 1 — Define the states
+enum MovementState {
+    IDLE,
+    WALKING,
+    SPRINTING,
+    CROUCHING
+}
+
+An enum defines a fixed list of named states. This makes the code easier to read and maintain.
+
+Step 2 — Track the current state
+var current_state: MovementState = MovementState.IDLE
+
+The player begins in the IDLE state.
+
+Step 3 — Select a state
+if is_crouching:
+    current_state = MovementState.CROUCHING
+elif input_dir == Vector2.ZERO:
+    current_state = MovementState.IDLE
+elif Input.is_action_pressed("sprint"):
+    current_state = MovementState.SPRINTING
+else:
+    current_state = MovementState.WALKING
+
+The order matters:
+
+Crouching takes priority.
+
+No directional input means idle.
+
+Sprint input while moving means sprinting.
+
+Otherwise, the player is walking.
+
+Step 4 — Execute the state
+match current_state:
+    MovementState.IDLE:
+        target_speed = 0.0
+    MovementState.WALKING:
+        target_speed = SPEED
+    MovementState.SPRINTING:
+        target_speed = SPRINT_SPEED
+    MovementState.CROUCHING:
+        target_speed = CROUCH_SPEED
+
+The match statement selects the appropriate speed for the active state.
+
+Step 5 — Apply gravity independently
+
+Gravity and jumping are handled separately from the horizontal movement states. This allows the character to keep moving horizontally while jumping or falling.
+
+4. Input Map configuration
+
+Action
+
+	
+
+Key
+
+
+
+
+move_forward
+
+	
+
+W
+
+
+
+
+move_backward
+
+	
+
+S
+
+
+
+
+move_left
+
+	
+
+A
+
+
+
+
+move_right
+
+	
+
+D
+
+
+
+
+sprint
+
+	
+
+Left Shift
+
+
+
+
+crouch
+
+	
+
+C
+
+
+
+
+ui_accept
+
+	
+
+Space
+
+5. Test the state machine
+
+Testing checklist
+
+0 of 6 tested
+
+Idle
+
+Release all movement keys
+
+Expected: IDLE
+
+Walking
+
+Hold W
+
+Expected: WALKING
+
+Sprinting
+
+Hold W + Shift
+
+Expected: SPRINTING
+
+Crouching
+
+Press C and hold W
+
+Expected: CROUCHING
+
+Crouch priority
+
+Crouch, then hold W + Shift
+
+Expected: CROUCHING
+
+Jump
+
+Press Space while standing
+
+Expected: Jump vertically; horizontal state updates independently
+
+Important: This is a code-based state machine, not yet a complete physical crouch system. The crouch state currently changes movement speed, but does not change the collision capsule or camera height. Also, standing up under a low ceiling is not checked.
+
+For your reusable Godot controller, a good next improvement is to add state entry/exit functions, a physical crouch system, and AnimationTree integration so movement logic and animations can respond to state changes cleanly.

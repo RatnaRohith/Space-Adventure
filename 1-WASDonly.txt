@@ -1,0 +1,466 @@
+
+Player.gd — WASD Movement Only
+
+extends CharacterBody3D
+
+const SPEED = 5.0
+
+func _physics_process(delta: float) -> void:
+
+    var input_dir := Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    var direction := (
+        transform.basis * Vector3(input_dir.x, 0, input_dir.y)
+    ).normalized()
+
+    if direction:
+        velocity.x = direction.x * SPEED
+        velocity.z = direction.z * SPEED
+    else:
+        velocity.x = move_toward(velocity.x, 0, SPEED)
+        velocity.z = move_toward(velocity.z, 0, SPEED)
+
+    move_and_slide()
+Input Map configuration
+
+Open Project → Project Settings → Input Map and configure:
+
+Action  	-	Key
+move_forward 	-	W
+move_backward 	-	S
+move_left 	- 	A
+move_right 	- 	D
+
+Important notes
+Input.get_vector() combines the four movement actions into one direction vector.
+transform.basis makes movement relative to the player's orientation.
+move_toward() smoothly decelerates the player when movement keys are released.
+move_and_slide() applies movement and handles collisions.
+
+Note: This version does not include gravity. If your player needs to stay on a floor in a 3D scene, retain the gravity section from your original script.
+
+_physics_process
+input_dir
+Input
+Input.get_vector
+direction
+transform.basis
+Vector3
+normalized()
+velocity.x
+move_toward
+move_and_slide()
+
+These are the important functions, variables, and concepts in your Godot 3D Player Movement script. Let's understand each one with simple explanations and examples.
+
+Godot 3D Player Movement — Code Explanation
+1. _physics_process(delta)
+func _physics_process(delta: float) -> void:
+
+Purpose: Runs the function at a fixed physics rate, typically 60 times per second.
+
+func — defines a function.
+
+_physics_process — Godot's built-in physics callback.
+
+delta — time elapsed since the previous physics frame, in seconds.
+
+float — data type for decimal numbers.
+
+void — indicates the function does not return a value.
+
+Why use it? Player movement and physics calculations should generally run here for consistent behavior.
+
+Example:
+
+func _physics_process(delta: float) -> void:
+    velocity.y -= 9.8 * delta
+
+This applies downward acceleration. In a real game, use the gravity appropriate to your project.
+
+2. input_dir
+var input_dir = Input.get_vector(
+    "ui_left",
+    "ui_right",
+    "ui_up",
+    "ui_down"
+)
+
+Purpose: Stores the player's directional input as a Vector2.
+
+For example:
+
+Input
+
+	
+
+input_dir
+
+
+
+
+No key pressed
+
+	
+
+(0, 0)
+
+
+
+
+Left
+
+	
+
+(-1, 0)
+
+
+
+
+Right
+
+	
+
+(1, 0)
+
+
+
+
+Forward
+
+	
+
+(0, -1)
+
+
+
+
+Backward
+
+	
+
+(0, 1)
+
+input_dir is a variable name chosen by the programmer. You could name it movement_input instead.
+
+3. Input
+
+Input is a built-in Godot class that provides access to keyboard, mouse, controller, and other input devices.
+
+Example:
+
+if Input.is_action_just_pressed("ui_accept"):
+    print("Jump pressed")
+
+Input — built-in class.
+
+is_action_just_pressed() — returns true when an action is first pressed.
+
+"ui_accept" — the name of an input action, often mapped to Enter or Space depending on the project's input settings.
+
+You can configure actions in Project → Project Settings → Input Map.
+
+4. Input.get_vector()
+var input_dir = Input.get_vector(
+    "ui_left",
+    "ui_right",
+    "ui_up",
+    "ui_down"
+)
+
+Purpose: Combines four directional input actions into one 2D vector.
+
+The function automatically limits the vector's length to 1, so pressing two directions diagonally does not produce faster movement.
+
+For your own WASD controls, you can create actions named move_left, move_right, move_forward, and move_backward.
+
+var input_dir = Input.get_vector(
+    "move_left",
+    "move_right",
+    "move_forward",
+    "move_backward"
+)
+5. direction
+var direction = transform.basis * Vector3(
+    input_dir.x,
+    0,
+    input_dir.y
+)
+
+Purpose: Represents the direction in which the player should move in 3D space.
+
+Here is how the values work:
+
+input_dir.x — horizontal input.
+
+0 — no vertical movement from keyboard input.
+
+input_dir.y — forward/backward input.
+
+transform.basis — represents the object's orientation in 3D space.
+
+* — multiplies the orientation basis by the direction vector to convert it into a direction relative to the object's orientation.
+
+This is useful when movement should follow the player's orientation.
+
+For a third-person game, however, you will often want movement relative to the camera instead of the player's current orientation.
+
+6. Vector3
+
+Vector3 represents a point, position, or direction in three-dimensional space using three numbers.
+
+var position = Vector3(10, 5, 2)
+
+The three components are:
+
+x — left/right.
+
+y — up/down.
+
+z — forward/backward.
+
+Godot uses the negative Z direction as the conventional forward direction for 3D objects.
+
+Examples:
+
+Vector3(1, 0, 0)   # Positive X
+Vector3(0, 1, 0)   # Up
+Vector3(0, 0, -1)  # Forward
+Vector3.ZERO       # (0, 0, 0)
+7. normalized()
+direction = direction.normalized()
+
+Purpose: Converts a non-zero vector into a vector with a length of 1, preserving its direction.
+
+For example:
+
+var direction = Vector3(3, 0, 4)
+print(direction.normalized())
+
+The result is approximately:
+
+(0.6, 0, 0.8)
+
+Why is it useful? It prevents diagonal movement from becoming faster when you combine directional vectors manually.
+
+Note that normalizing a zero vector leaves it as zero.
+
+8. velocity.x
+velocity.x = direction.x * SPEED
+
+Purpose: Sets the player's velocity along the X axis.
+
+In a CharacterBody3D, velocity is a built-in Vector3 property representing movement velocity in units per second.
+
+velocity.x = 5.0
+velocity.y = 0.0
+velocity.z = -5.0
+
+These values specify movement along the three axes.
+
+velocity.x — horizontal velocity along X.
+
+velocity.y — vertical velocity, used for jumping and gravity.
+
+velocity.z — horizontal velocity along Z.
+
+Important: assigning velocity.x directly sets the velocity instantly. If you want gradual acceleration or deceleration, use move_toward().
+
+9. move_toward()
+velocity.x = move_toward(
+    velocity.x,
+    direction.x * SPEED,
+    SPEED * delta
+)
+
+Purpose: Moves a number toward a target value by a maximum amount without overshooting.
+
+The general syntax is:
+
+move_toward(current, target, amount)
+
+Example:
+
+var speed = 0.0
+
+speed = move_toward(speed, 5.0, 1.0)
+print(speed) # 1.0
+
+Repeated calls move the value from 0 toward 5.
+
+In player movement:
+
+current — current velocity.
+
+target — desired velocity.
+
+amount — maximum change per physics frame.
+
+Using SPEED * delta makes the change dependent on elapsed time. For more controllable acceleration, use a separate ACCELERATION constant.
+
+velocity.x = move_toward(
+    velocity.x,
+    direction.x * SPEED,
+    ACCELERATION * delta
+)
+10. move_and_slide()
+move_and_slide()
+
+Purpose: Moves a CharacterBody3D according to its velocity while handling collisions and sliding along surfaces.
+
+For example:
+
+extends CharacterBody3D
+
+const SPEED = 5.0
+
+func _physics_process(delta: float) -> void:
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    var direction = Vector3(input_dir.x, 0, input_dir.y)
+
+    velocity.x = direction.x * SPEED
+    velocity.z = direction.z * SPEED
+
+    move_and_slide()
+
+This example moves the character along the world X and Z axes. It assumes the four input actions exist in the Input Map.
+
+Notice that move_and_slide() takes no arguments here. It uses the velocity property of the CharacterBody3D node.
+
+How these concepts work together
+
+1. Read player input
+
+Input.get_vector()
+
+2. Calculate movement direction
+
+Vector3, transform.basis, normalized()
+
+3. Calculate velocity
+
+velocity.x, velocity.z, move_toward()
+
+4. Move the character
+
+move_and_slide()
+
+Quick revision
+
+Concept
+
+	
+
+Meaning
+
+
+
+
+_physics_process(delta)
+
+	
+
+Runs physics-related code at a fixed rate
+
+
+
+
+input_dir
+
+	
+
+Variable storing directional input
+
+
+
+
+Input
+
+	
+
+Built-in input handling class
+
+
+
+
+Input.get_vector()
+
+	
+
+Converts four actions into a 2D direction
+
+
+
+
+direction
+
+	
+
+Variable representing movement direction
+
+
+
+
+transform.basis
+
+	
+
+Object orientation in 3D space
+
+
+
+
+Vector3
+
+	
+
+Three-dimensional vector
+
+
+
+
+normalized()
+
+	
+
+Produces a unit-length vector
+
+
+
+
+velocity.x
+
+	
+
+Velocity along the X axis
+
+
+
+
+move_toward()
+
+	
+
+Gradually changes a value toward a target
+
+
+
+
+move_and_slide()
+
+	
+
+Moves the character and handles collisions
+
+Recommended next step: Learn how to make a third-person character move relative to the camera, then add acceleration,

@@ -1,0 +1,169 @@
+
+extends CharacterBody3D
+
+# Movement speeds
+const SPEED = 5.0
+const SPRINT_SPEED = 8.0
+const CROUCH_SPEED = 2.5
+const JUMP_VELOCITY = 4.5
+const ACCELERATION = 20.0
+
+# Camera settings
+const MOUSE_SENSITIVITY = 0.003
+const STANDING_CAMERA_HEIGHT = 1.5
+const CROUCH_CAMERA_HEIGHT = 1.0
+const CAMERA_SMOOTHING = 8.0
+
+# Movement states
+enum MovementState {
+    IDLE,
+    WALKING,
+    SPRINTING,
+    CROUCHING
+}
+
+var current_state: MovementState = MovementState.IDLE
+var is_crouching = false
+
+# Camera references
+@onready var camera_pivot: Node3D = $CameraPivot
+@onready var spring_arm: SpringArm3D = $CameraPivot/SpringArm3D
+
+
+func _ready() -> void:
+    Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _unhandled_input(event: InputEvent) -> void:
+
+    # Rotate camera with mouse
+    if event is InputEventMouseMotion:
+        if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+            camera_pivot.rotation.y -= (
+                event.relative.x * MOUSE_SENSITIVITY
+            )
+
+            camera_pivot.rotation.x -= (
+                event.relative.y * MOUSE_SENSITIVITY
+            )
+
+            camera_pivot.rotation.x = clampf(
+                camera_pivot.rotation.x,
+                deg_to_rad(-60.0),
+                deg_to_rad(60.0)
+            )
+
+    # Release mouse with Escape
+    if event.is_action_pressed("ui_cancel"):
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+    # Capture mouse again with left click
+    if event is InputEventMouseButton and event.pressed:
+        if event.button_index == MOUSE_BUTTON_LEFT:
+            Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func _physics_process(delta: float) -> void:
+    apply_gravity(delta)
+    handle_crouch_input()
+    update_camera_height(delta)
+    handle_jump()
+    update_movement_state()
+    handle_movement(delta)
+
+    move_and_slide()
+
+
+# Apply gravity
+func apply_gravity(delta: float) -> void:
+    if not is_on_floor():
+        velocity += get_gravity() * delta
+
+
+# Toggle crouching
+func handle_crouch_input() -> void:
+    if Input.is_action_just_pressed("crouch"):
+        is_crouching = not is_crouching
+
+
+# Smoothly adjust camera height
+func update_camera_height(delta: float) -> void:
+    var target_height = STANDING_CAMERA_HEIGHT
+
+    if is_crouching:
+        target_height = CROUCH_CAMERA_HEIGHT
+
+    camera_pivot.position.y = lerpf(
+        camera_pivot.position.y,
+        target_height,
+        clampf(CAMERA_SMOOTHING * delta, 0.0, 1.0)
+    )
+
+
+# Handle jumping
+func handle_jump() -> void:
+    if Input.is_action_just_pressed("ui_accept"):
+        if is_on_floor() and not is_crouching:
+            velocity.y = JUMP_VELOCITY
+
+
+# Determine movement state
+func update_movement_state() -> void:
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    if is_crouching:
+        current_state = MovementState.CROUCHING
+    elif input_dir == Vector2.ZERO:
+        current_state = MovementState.IDLE
+    elif Input.is_action_pressed("sprint"):
+        current_state = MovementState.SPRINTING
+    else:
+        current_state = MovementState.WALKING
+
+
+# Move relative to camera direction
+func handle_movement(delta: float) -> void:
+    var input_dir = Input.get_vector(
+        "move_left",
+        "move_right",
+        "move_forward",
+        "move_backward"
+    )
+
+    var direction = Vector3(
+        input_dir.x,
+        0.0,
+        input_dir.y
+    ).rotated(
+        Vector3.UP,
+        camera_pivot.global_rotation.y
+    ).normalized()
+
+    var target_speed = 0.0
+
+    match current_state:
+        MovementState.IDLE:
+            target_speed = 0.0
+        MovementState.WALKING:
+            target_speed = SPEED
+        MovementState.SPRINTING:
+            target_speed = SPRINT_SPEED
+        MovementState.CROUCHING:
+            target_speed = CROUCH_SPEED
+
+    velocity.x = move_toward(
+        velocity.x,
+        direction.x * target_speed,
+        ACCELERATION * delta
+    )
+
+    velocity.z = move_toward(
+        velocity.z,
+        direction.z * target_speed,
+        ACCELERATION * delta
+    )
